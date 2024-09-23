@@ -1,0 +1,72 @@
+<?xml version="1.0"?>
+<project version="2">
+	<pipeline>
+		<pass name="clearfb" type="compute" active="true">
+			<shader type="cs" path="shaders\clearfbCS.glsl" entry="main" />
+			<groupsize x="32" y="32" z="1" />
+			<macros />
+		</pass>
+		<pass name="rasterize" type="compute" active="true">
+			<shader type="cs" path="shaders\rasterizeCS.glsl" entry="main" />
+			<groupsize x="4" y="1" z="1" />
+			<variables>
+				<variable type="float" name="uTime" system="Time" />
+			</variables>
+			<macros />
+		</pass>
+		<pass name="decodefb" type="shader" active="true" patchverts="1" collapsed="true">
+			<shader type="vs" path="shaders\decodefbVS.glsl" entry="main" />
+			<shader type="ps" path="shaders\decodefbPS.glsl" entry="main" />
+			<inputlayout>
+				<item value="Position" semantic="POSITION" />
+				<item value="Normal" semantic="NORMAL" />
+				<item value="Texcoord" semantic="TEXCOORD0" />
+			</inputlayout>
+			<rendertexture />
+			<items>
+				<item name="ScreenCover" type="geometry">
+					<type>ScreenQuadNDC</type>
+					<width>1</width>
+					<height>1</height>
+					<depth>1</depth>
+					<topology>TriangleList</topology>
+				</item>
+			</items>
+			<itemvalues />
+			<variables>
+				<variable type="float2" name="uResolution" system="ViewportSize" />
+			</variables>
+			<macros />
+		</pass>
+	</pipeline>
+	<objects>
+		<object type="image3d" name="framebuffer" width="512" height="512" depth="3" format="R32_FLOAT">
+			<bind slot="0" name="clearfb" uav="1" />
+			<bind slot="0" name="rasterize" uav="1" />
+			<bind slot="0" name="decodefb" uav="0" />
+		</object>
+		<object type="buffer" name="vertices" size="42528" format="vec3;float;vec3;float;vec2;float;float" pausedpreview="false">
+			<bind slot="1" name="rasterize" />
+		</object>
+		<object type="buffer" name="indices" size="15456" format="ivec3;int" pausedpreview="false">
+			<bind slot="2" name="rasterize" />
+		</object>
+		<object type="texture" path="suzanne.jpg" vflip="false" min_filter="Linear" mag_filter="Nearest" wrap_s="Repeat" wrap_t="Repeat">
+			<bind slot="0" name="rasterize" />
+		</object>
+	</objects>
+	<cameras />
+	<settings>
+		<entry type="property" name="rasterize" item="pipe" />
+		<entry type="file" name="rasterize" shader="cs" />
+		<entry type="camera" fp="false">
+			<distance>4</distance>
+			<pitch>28</pitch>
+			<yaw>317</yaw>
+			<roll>360</roll>
+		</entry>
+		<entry type="clearcolor" r="0" g="0" b="0" a="0" />
+		<entry type="usealpha" val="false" />
+	</settings>
+	<plugindata />
+</project>
