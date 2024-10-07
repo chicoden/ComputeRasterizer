@@ -57,8 +57,7 @@
 	</objects>
 	<cameras />
 	<settings>
-		<entry type="property" name="rasterize" item="pipe" />
-		<entry type="file" name="rasterize" shader="cs" />
+		<entry type="property" name="framebuffer" item="image3D" />
 		<entry type="camera" fp="false">
 			<distance>4</distance>
 			<pitch>28</pitch>

@@ -19,20 +19,6 @@ class Indices3(ctypes.Structure):
 with open(r"C:\Users\Pytho\3DModels\Suzanne\suzanne.obj", "r") as file:
     obj_text = file.read()
 
-#obj_text = """
-#v -1 -1 0
-#v 1 -1 0
-#v 1 1 0
-#v -1 1 0
-#vn 0 0 1
-#vt 0 0
-#vt 1 0
-#vt 1 1
-#vt 0 1
-#f 1/1/1 2/2/1 3/3/1
-#f 3/3/1 4/4/1 1/1/1
-#"""
-
 vertices = []
 normals = []
 uvs = []
@@ -78,8 +64,8 @@ for i in range(len(unique_vertices)):
 for i in range(len(new_face_indices)):
     index_data[i].indices = (ctypes.c_uint32 * 3)(*new_face_indices[i])
 
-#with open(r"..\buffers\vertices.buf", "wb") as file:
-#    file.write(bytes(vertex_data))
+with open(r"..\buffers\vertices.buf", "wb") as file:
+    file.write(bytes(vertex_data))
 
-#with open(r"..\buffers\indices.buf", "wb") as file:
-#    file.write(bytes(index_data))
+with open(r"..\buffers\indices.buf", "wb") as file:
+    file.write(bytes(index_data))

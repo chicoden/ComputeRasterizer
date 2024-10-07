@@ -6,7 +6,7 @@ in vec2 outUv;
 out vec4 fragColor;
 
 void main() {
-    uvec2 id = uvec2(outUv * 512.0);
+    uvec2 id = uvec2(outUv * vec2(imageSize(fb).xy));
     fragColor = vec4(pow(vec3(uvec3(
         imageLoad(fb, ivec3(id, 0)).x,
         imageLoad(fb, ivec3(id, 1)).x,
