@@ -1,4 +1,4 @@
-#version 430
+#version 460
 
 #define TRIANGLE_COUNT 966
 #define Z_NEAR 0.01
@@ -12,32 +12,31 @@ struct Vertex {
 
 layout(local_size_x = 256) in;
 
-layout(binding = 0, r32ui) uniform uimage3D fb;
-layout(binding = 1, std140) buffer vbuf { Vertex vertices[]; };
-layout(binding = 2, std140) buffer ibuf { uvec3 indices[]; };
+layout(r32ui, binding = 0) uniform uimage3D fb;
+layout(std430, binding = 1) buffer VertexBuffer { Vertex vertices[]; };
+layout(std430, binding = 2) buffer IndexBuffer { uvec3 indices[]; };
 
 layout(location = 0) uniform sampler2D colorTexture;
 uniform float uTime;
 
-vec3 worldToViewSpace(vec3 p) {
+vec4 worldToClipSpace(vec3 worldSpacePos) {
     float co = cos(uTime), si = sin(uTime);
-    p.xz *= mat2(co, si, -si, co);
-    p -= vec3(0.0, 0.0, 3.0);
-    return p;
+    mat3 spin = mat3(co, 0.0, si, 0.0, 1.0, 0.0, -si, 0.0, co);
+    vec3 viewSpacePos = spin * worldSpacePos + vec3(0.0, 0.0, -3.0);
+    float aspectRatio = float(imageSize(fb).x) / float(imageSize(fb).y);
+    return vec4(
+        viewSpacePos.x / aspectRatio,
+        viewSpacePos.y,
+        (viewSpacePos.z + Z_NEAR) * Z_FAR / (Z_NEAR - Z_FAR),
+        -viewSpacePos.z
+    );
 }
 
-vec3 viewToClipSpace(vec3 p) {
-    vec2 res = vec2(imageSize(fb).xy);
-    vec3 proj = vec3(p.xy, mix(-Z_NEAR, Z_FAR, (-p.z - Z_NEAR) / (Z_FAR - Z_NEAR))) / -p.z;
-    proj.x *= res.y / res.x;
-    return proj;
+ivec2 ndcToScreenSpace(vec2 ndc) {
+    return ivec2((0.5 + 0.5 * ndc) * vec2(imageSize(fb).xy));
 }
 
-ivec2 ndcToScreenSpace(vec2 p) {
-    return ivec2((0.5 + 0.5 * p) * vec2(imageSize(fb).xy));
-}
-
-vec3 shadePixel(vec3 pos, vec3 normal, vec2 uv) {
+vec3 shadeFragment(vec3 pos, vec3 normal, vec2 uv) {
     float diffuse = max(0.1, dot(normal, normalize(vec3(-1.0, 1.0, -1.0))));
     return texture(colorTexture, uv).rgb * diffuse;
 }
@@ -51,32 +50,36 @@ void drawTriangle(uvec3 indices) {
     mat3 matNormal = mat3(v0.normal, v1.normal, v2.normal);
     mat3x2 matUv = mat3x2(v0.uv, v1.uv, v2.uv);
 
-    // Transform to view space
-    mat3 viewSpaceVerts = mat3(
-        worldToViewSpace(v0.pos),
-        worldToViewSpace(v1.pos),
-        worldToViewSpace(v2.pos)
-    );
-
     // Transform to clip space
     // TODO: actually clip triangles against frustum
-    mat3 clipSpaceVerts = mat3(
-        viewToClipSpace(viewSpaceVerts[0]),
-        viewToClipSpace(viewSpaceVerts[1]),
-        viewToClipSpace(viewSpaceVerts[2])
+    mat3x4 clipSpaceVerts = mat3x4(
+        worldToClipSpace(v0.pos),
+        worldToClipSpace(v1.pos),
+        worldToClipSpace(v2.pos)
     );
 
-    // Cull backfacing triangles
-    vec3 perp = cross(clipSpaceVerts[1] - clipSpaceVerts[0], clipSpaceVerts[2] - clipSpaceVerts[0]);
-    if (perp.z < 0.0) return;
+    vec3 perspFactor = 1.0 / vec3(
+        clipSpaceVerts[0].w,
+        clipSpaceVerts[1].w,
+        clipSpaceVerts[2].w
+    );
+
+    // Transform to NDC (Normalized Device Coordinates)
+    mat3 ndc = mat3(
+        clipSpaceVerts[0].xyz * perspFactor[0],
+        clipSpaceVerts[1].xyz * perspFactor[1],
+        clipSpaceVerts[2].xyz * perspFactor[2]
+    );
 
     // Map to screen space and hold onto the index of the vertex
-    ivec3 screenA = ivec3(ndcToScreenSpace(clipSpaceVerts[0].xy), 0);
-    ivec3 screenB = ivec3(ndcToScreenSpace(clipSpaceVerts[1].xy), 1);
-    ivec3 screenC = ivec3(ndcToScreenSpace(clipSpaceVerts[2].xy), 2);
+    ivec3 screenA = ivec3(ndcToScreenSpace(ndc[0].xy), 0);
+    ivec3 screenB = ivec3(ndcToScreenSpace(ndc[1].xy), 1);
+    ivec3 screenC = ivec3(ndcToScreenSpace(ndc[2].xy), 2);
 
-    // Depth values remapped to [0...1] range
-    vec3 depths = 0.5 + 0.5 * transpose(clipSpaceVerts)[2];
+    // Cull backfacing triangles
+    ivec2 deltaBA = screenB.xy - screenA.xy;
+    ivec2 deltaCA = screenC.xy - screenA.xy;
+    if (deltaBA.x * deltaCA.y < deltaBA.y * deltaCA.x) return;
 
     // Sort vertices in screen space by y coordinate
     if (screenA.y > screenC.y) { ivec3 tmp = screenA; screenA = screenC; screenC = tmp; }
@@ -84,12 +87,17 @@ void drawTriangle(uvec3 indices) {
     if (screenB.y > screenC.y) { ivec3 tmp = screenB; screenB = screenC; screenC = tmp; }
 
     // Prepare barycentric coordinates for perspective correct interpolation
-    vec4 baryA = vec4(0.0, 0.0, 0.0, 1.0 / viewSpaceVerts[screenA[2]].z);
-    vec4 baryB = vec4(0.0, 0.0, 0.0, 1.0 / viewSpaceVerts[screenB[2]].z);
-    vec4 baryC = vec4(0.0, 0.0, 0.0, 1.0 / viewSpaceVerts[screenC[2]].z);
+    vec4 baryA = vec4(0.0);
+    vec4 baryB = vec4(0.0);
+    vec4 baryC = vec4(0.0);
+    baryA.w = perspFactor[screenA[2]];
+    baryB.w = perspFactor[screenB[2]];
+    baryC.w = perspFactor[screenC[2]];
     baryA[screenA[2]] = baryA.w;
     baryB[screenB[2]] = baryB.w;
     baryC[screenC[2]] = baryC.w;
+
+    vec3 depths = vec3(ndc[0].z, ndc[1].z, ndc[2].z);
 
     if (screenC.y > screenA.y) {
         vec2 deltaBA = vec2(screenB.xy - screenA.xy);
@@ -138,7 +146,7 @@ void drawTriangle(uvec3 indices) {
                 for (int x = int(leftX); x < int(rightX); x++) {
                     vec3 worldBary = bary.xyz / bary.w;
                     uint depthBits = uint(dot(depths, worldBary) * float(0xffffff)) << 8;
-                    vec3 shade = shadePixel(matPos * worldBary, matNormal * worldBary, matUv * worldBary);
+                    vec3 shade = shadeFragment(matPos * worldBary, matNormal * worldBary, matUv * worldBary);
                     imageAtomicMin(fb, ivec3(x, y, 0), depthBits | uint(shade.r * float(0xff)));
                     imageAtomicMin(fb, ivec3(x, y, 1), depthBits | uint(shade.g * float(0xff)));
                     imageAtomicMin(fb, ivec3(x, y, 2), depthBits | uint(shade.b * float(0xff)));
@@ -173,7 +181,7 @@ void drawTriangle(uvec3 indices) {
                 for (int x = int(leftX); x < int(rightX); x++) {
                     vec3 worldBary = bary.xyz / bary.w;
                     uint depthBits = uint(dot(depths, worldBary) * float(0xffffff)) << 8;
-                    vec3 shade = shadePixel(matPos * worldBary, matNormal * worldBary, matUv * worldBary);
+                    vec3 shade = shadeFragment(matPos * worldBary, matNormal * worldBary, matUv * worldBary);
                     imageAtomicMin(fb, ivec3(x, y, 0), depthBits | uint(shade.r * float(0xff)));
                     imageAtomicMin(fb, ivec3(x, y, 1), depthBits | uint(shade.g * float(0xff)));
                     imageAtomicMin(fb, ivec3(x, y, 2), depthBits | uint(shade.b * float(0xff)));

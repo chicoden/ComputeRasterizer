@@ -58,8 +58,9 @@
 	<cameras />
 	<settings>
 		<entry type="property" name="framebuffer" item="image3D" />
+		<entry type="file" name="rasterize" shader="cs" />
 		<entry type="camera" fp="false">
-			<distance>4</distance>
+			<distance>2</distance>
 			<pitch>28</pitch>
 			<yaw>317</yaw>
 			<roll>360</roll>
