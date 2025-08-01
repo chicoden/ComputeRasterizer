@@ -1,9 +1,9 @@
-#version 430
+#version 460
 
 layout(location = 0) in vec2 pos;
 layout(location = 1) in vec2 uv;
 
-layout(binding = 0, r32ui) uniform uimage3D fb;
+layout(r32ui, binding = 0) uniform uimage3D fb;
 uniform vec2 uResolution;
 
 out vec2 outUv;

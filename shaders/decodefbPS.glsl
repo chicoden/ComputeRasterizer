@@ -1,6 +1,6 @@
-#version 430
+#version 460
 
-layout(binding = 0, r32ui) uniform uimage3D fb;
+layout(r32ui, binding = 0) uniform uimage3D fb;
 
 in vec2 outUv;
 out vec4 fragColor;
